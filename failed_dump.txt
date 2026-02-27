@@ -1,0 +1,37 @@
+[['2026-03-05 01:53:49',
+  'Top 3 Momen Idealis Berbagi😇 #idealis92 #takjil #berbagi.mp4',
+  'https://drive.google.com/file/d/1pdDhxDuyfeaht6ePD96DlEM9qivBdJuD/view?usp=drivesdk',
+  '3 Momen Idealis Berbagi😇',
+  'Simak 3 momen idealis berbagi yang inspiratif! Dalam video ini, kita akan '
+  'membahas tentang pentingnya berbagi dan bersedekah, terutama saat bulan '
+  'Ramadan dengan takjil. Jangan lupa like, comment, dan subscribe untuk video '
+  'lainnya tentang idealis92 dan berbagi!',
+  'idealis92, takjil, berbagi, momen idealis, ramadan',
+  'failed',
+  '',
+  '2026-02-28',
+  'default'],
+ ['2026-03-06 01:53:49',
+  'Idealis Kalah Tantangan Momen😂 #idealis92 #tantangan #lucu.mp4',
+  'https://drive.google.com/file/d/1VU9F1tzYMjjmcjLPpJ-mNrcvQmeLeezo/view?usp=drivesdk',
+  'Idealis Kalah Tantangan Lucu',
+  'Watch Idealis92 take on the challenge and experience the hilarious moment! '
+  "Don't forget to like, comment, and subscribe for more entertaining content. "
+  'Follow us for daily doses of laughter and fun! #idealis92 #tantangan #lucu',
+  'idealis92, tantangan, lucu, challenge, funny moment',
+  'failed',
+  '',
+  '2026-02-28',
+  'default'],
+ ['2026-03-07 01:53:49',
+  'Idealis Kalah Tantangan Momen😂 #idealis92 #tantangan #lucu.mp4',
+  'https://drive.google.com/file/d/151jaDIHZQgrI0Pbx8qq92-F5Fj27dvTt/view?usp=drivesdk',
+  'Idealis Kalah Tantangan Momen😂',
+  "Watch Idealis92 take on the challenge and fail hilariously! 😂 Don't forget "
+  'to like, comment, and subscribe for more entertaining content. Follow us '
+  'for daily dose of laughter and fun moments. #idealis92 #tantangan #lucu',
+  'Idealis92, Tantangan, Lucu, Komedi, Indonesia',
+  'failed',
+  '',
+  '2026-02-28',
+  'default']]
