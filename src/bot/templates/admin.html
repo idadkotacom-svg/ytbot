@@ -41,11 +41,45 @@
 
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
 
-        <div class="mb-6 flex justify-between items-end">
+        <div class="mb-6 flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
             <div>
                 <h1 class="text-2xl font-bold text-gray-900 mb-1">Queue Management (All Videos)</h1>
                 <p class="text-gray-600 text-sm">Review seluruh video. Tindakan "Reject" akan membatalkan antrean
                     dan/atau menghapus file dari Google Drive.</p>
+            </div>
+            <div class="flex flex-wrap items-center gap-3">
+                <!-- Filter Status -->
+                <div class="flex items-center gap-2">
+                    <label class="text-sm font-medium text-gray-700">Status:</label>
+                    <select id="filter-status" onchange="filterAndSortCards()"
+                        class="text-sm border-gray-300 rounded-md shadow-sm p-1.5 bg-white outline-none focus:ring-2 focus:ring-blue-500">
+                        <option value="all">Semua Status</option>
+                        <option value="pending">Pending</option>
+                        <option value="scheduled">Scheduled</option>
+                        <option value="uploaded">Uploaded</option>
+                        <option value="failed">Failed</option>
+                    </select>
+                </div>
+                <!-- Filter Channel -->
+                <div class="flex items-center gap-2">
+                    <label class="text-sm font-medium text-gray-700">Channel:</label>
+                    <select id="filter-channel" onchange="filterAndSortCards()"
+                        class="text-sm border-gray-300 rounded-md shadow-sm p-1.5 bg-white outline-none focus:ring-2 focus:ring-blue-500">
+                        <option value="all">Semua Channel</option>
+                        {% for c in channels %}
+                        <option value="{{ c }}">{{ c }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <!-- Sort -->
+                <div class="flex items-center gap-2">
+                    <label class="text-sm font-medium text-gray-700">Sortir:</label>
+                    <select id="sort-select" onchange="filterAndSortCards()"
+                        class="text-sm border-gray-300 rounded-md shadow-sm p-1.5 bg-white outline-none focus:ring-2 focus:ring-blue-500">
+                        <option value="newest">Paling Baru</option>
+                        <option value="oldest">Paling Lama</option>
+                    </select>
+                </div>
             </div>
         </div>
 
@@ -57,17 +91,18 @@
         </div>
 
         <!-- Video List -->
-        <div class="grid grid-cols-1 gap-6">
+        <div id="video-container" class="grid grid-cols-1 gap-6">
             {% if videos %}
             {% for video in videos %}
-            <div class="glass-panel rounded-xl shadow-sm overflow-hidden" id="card-{{ video.row }}">
+            {% set status = video.status %}
+            <div class="video-card glass-panel rounded-xl shadow-sm overflow-hidden" id="card-{{ video.row }}"
+                data-row="{{ video.row }}" data-status="{{ status }}" data-channel="{{ video.channel }}">
                 <div class="p-6">
                     <div class="flex flex-col lg:flex-row gap-6">
 
                         <!-- Left: Info -->
                         <div class="flex-1">
                             <div class="flex items-center gap-2 mb-2">
-                                {% set status = video.status %}
                                 {% if status == 'pending' %}
                                 <span
                                     class="bg-yellow-100 text-yellow-800 text-xs font-semibold px-2.5 py-0.5 rounded border border-yellow-200"><i
@@ -142,6 +177,16 @@
                                         koma)</label>
                                     <input type="text" id="input-tags-{{ video.row }}" value="{{ video.tags }}"
                                         class="w-full text-sm border-gray-300 rounded-md shadow-sm p-2 bg-white outline-none focus:ring-2 focus:ring-blue-500">
+                                </div>
+                                <div class="mb-4">
+                                    <label class="block text-xs font-medium text-gray-700 mb-1">Channel Tujuan</label>
+                                    <select id="input-channel-{{ video.row }}"
+                                        class="w-full text-sm border-gray-300 rounded-md shadow-sm p-2 bg-white outline-none focus:ring-2 focus:ring-blue-500">
+                                        {% for c in channels %}
+                                        <option value="{{ c }}" {% if video.channel==c %}selected{% endif %}>{{ c }}
+                                        </option>
+                                        {% endfor %}
+                                    </select>
                                 </div>
                                 <div class="flex gap-2">
                                     <button onclick="saveEdit({{ video.row }})"
@@ -263,11 +308,49 @@
             }
         }
 
+        function filterAndSortCards() {
+            const container = document.getElementById('video-container');
+            if (!container) return;
+
+            const sortBy = document.getElementById('sort-select').value;
+            const filterStat = document.getElementById('filter-status').value;
+            const filterChan = document.getElementById('filter-channel').value;
+
+            const cards = Array.from(container.children).filter(el => el.classList.contains('video-card'));
+
+            // 1. Filter
+            cards.forEach(card => {
+                const cStat = card.dataset.status;
+                const cChan = card.dataset.channel;
+
+                let show = true;
+                if (filterStat !== 'all' && cStat !== filterStat) show = false;
+                if (filterChan !== 'all' && cChan !== filterChan) show = false;
+
+                if (show) card.style.display = 'block';
+                else card.style.display = 'none';
+            });
+
+            // 2. Sort (Only Visible ones functionally matter, but we sort all DOM nodes)
+            cards.sort((a, b) => {
+                const rowA = parseInt(a.dataset.row);
+                const rowB = parseInt(b.dataset.row);
+
+                if (sortBy === 'newest') return rowB - rowA;
+                if (sortBy === 'oldest') return rowA - rowB;
+
+                return 0;
+            });
+
+            cards.forEach(card => container.appendChild(card));
+        }
+
         function saveEdit(row) {
             const t = document.getElementById(`input-title-${row}`).value;
             const d = document.getElementById(`input-desc-${row}`).value;
             const tags = document.getElementById(`input-tags-${row}`).value;
-            actionVideo(row, 'edit', '', { title: t, description: d, tags: tags });
+            const channel = document.getElementById(`input-channel-${row}`).value;
+            actionVideo(row, 'edit', '', { title: t, description: d, tags: tags, channel: channel });
         }
     </script>
 

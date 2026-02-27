@@ -20,6 +20,33 @@ logger = logging.getLogger(__name__)
 SCOPES = ["https://www.googleapis.com/auth/youtube.upload"]
 
 
+def get_auth_url(channel_name: str) -> tuple[str, InstalledAppFlow]:
+    """Generate authorization URL for a specific channel."""
+    secrets_file = config.get_channel_client_secrets_file(channel_name)
+    if not os.path.exists(secrets_file):
+        raise FileNotFoundError(f"Missing client_secrets file for channel '{channel_name}'")
+    
+    flow = InstalledAppFlow.from_client_secrets_file(secrets_file, SCOPES)
+    flow.redirect_uri = "urn:ietf:wg:oauth:2.0:oob"
+    auth_url, _ = flow.authorization_url(prompt='consent')
+    return auth_url, flow
+
+
+def save_auth_code(channel_name: str, code: str, flow: InstalledAppFlow) -> bool:
+    """Exchange authorization code for credentials and save them to a file."""
+    try:
+        flow.fetch_token(code=code)
+        creds = flow.credentials
+        token_file = config.get_channel_token_file(channel_name)
+        with open(token_file, "w") as f:
+            f.write(creds.to_json())
+        logger.info(f"Successfully saved new YouTube token for '{channel_name}'.")
+        return True
+    except Exception as e:
+        logger.error(f"Failed to exchange auth code for '{channel_name}': {e}")
+        return False
+
+
 class QuotaExceededError(Exception):
     """Raised when YouTube API daily upload quota is exhausted (HTTP 403)."""
     pass
@@ -64,9 +91,10 @@ class YouTubeUploader:
                 
                 # Check if running on Render (headless server)
                 if os.environ.get("RENDER"):
-                    logger.info("Detected Render environment — using OOB (Console) OAuth flow.")
-                    # Use run_console to print the URL and ask for the authorization code
-                    creds = flow.run_console()
+                    raise ValueError(
+                        f"Missing YouTube token for '{self.channel_name}'. "
+                        f"Please run /login in Telegram to authenticate."
+                    )
                 else:
                     logger.info("Detected Local environment — using Local Server OAuth flow.")
                     creds = flow.run_local_server(port=0, open_browser=False)

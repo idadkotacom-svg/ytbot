@@ -17,12 +17,14 @@ import tempfile
 import re
 from datetime import datetime
 from pathlib import Path
+from typing import Dict, Tuple
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     ApplicationBuilder,
     CommandHandler,
     CallbackQueryHandler,
+    ConversationHandler,
     ContextTypes,
     MessageHandler,
     filters,
@@ -30,8 +32,8 @@ from telegram.ext import (
 
 from src.core.config import WIB
 from src.core import config
-
-# Logging setup
+from src.api.youtube import get_auth_url, save_auth_code
+from typing import Any
 logging.basicConfig(
     format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
     level=logging.INFO,
@@ -104,6 +106,11 @@ _user_channels: dict[int, str] = {}
 def _get_active_channel(user_id: int) -> str:
     """Get the active channel for a user."""
     return _user_channels.get(user_id, config.DEFAULT_CHANNEL)
+
+
+# ─── Auth Flow State ───────────────────────────────────────────────
+WAITING_FOR_AUTH_CODE = 1
+_auth_flows: Dict[int, Tuple[str, Any]] = {}
 
 
 # ─── Command Handlers ──────────────────────────────────────────────
@@ -247,7 +254,7 @@ async def cmd_channel(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"  {'\u2705' if c == active else '\u25cb'} <code>{c}</code>"
             for c in config.YOUTUBE_CHANNELS
         )
-        await update.message.reply_text(
+        await update.effective_message.reply_text(
             f"📺 <b>Active channel:</b> <code>{active}</code>\n\n"
             f"<b>Channels tersedia:</b>\n{channels_list}\n\n"
             f"Gunakan: <code>/channel nama_channel</code>",
@@ -275,7 +282,7 @@ async def cmd_channel(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if matched is None:
         channels_list = ", ".join(f"<code>{c}</code>" for c in config.YOUTUBE_CHANNELS)
-        await update.message.reply_text(
+        await update.effective_message.reply_text(
             f"❌ Channel <code>{target}</code> tidak ditemukan.\n"
             f"Channels tersedia: {channels_list}",
             parse_mode="HTML",
@@ -283,11 +290,70 @@ async def cmd_channel(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     _user_channels[user_id] = matched
-    await update.message.reply_text(
+    await update.effective_message.reply_text(
         f"✅ Channel switched ke <b>{matched}</b>\n"
         f"Video berikutnya akan di-upload ke channel ini.",
         parse_mode="HTML",
     )
+
+
+async def cmd_login_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Start the OAuth login conversation."""
+    user_id = update.effective_user.id
+    active_ch = _get_active_channel(user_id)
+    
+    try:
+        auth_url, flow = get_auth_url(active_ch)
+    except FileNotFoundError as e:
+        await update.message.reply_text(f"❌ {e}")
+        return ConversationHandler.END
+    except Exception as e:
+        await update.message.reply_text(f"❌ Gagal membuat link login: {e}")
+        return ConversationHandler.END
+        
+    _auth_flows[user_id] = (active_ch, flow)
+    
+    msg = (
+        f"🔐 <b>Otentikasi YouTube: <code>{active_ch}</code></b>\n\n"
+        f"1️⃣ <b>Buka Link Ini:</b>\n<a href='{auth_url}'>Klik untuk Login Google</a>\n\n"
+        f"2️⃣ <b>Login dan Setujui Akses</b>\n\n"
+        f"3️⃣ <b>Copy Kode Otorisasi (Auth Code)</b> yang diberikan oleh Google, lalu kirim/paste kode tersebut ke sini.\n\n"
+        f"<i>Kirim /cancel untuk membatalkan proses ini.</i>"
+    )
+    await update.message.reply_text(msg, parse_mode="HTML", disable_web_page_preview=True)
+    return WAITING_FOR_AUTH_CODE
+
+
+async def handle_auth_code(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Receive and process the auth code."""
+    user_id = update.effective_user.id
+    code = update.message.text.strip()
+    
+    if user_id not in _auth_flows:
+        await update.message.reply_text("❌ Sesi login tidak valid. Ketik /login lagi.")
+        return ConversationHandler.END
+        
+    channel_name, flow = _auth_flows.pop(user_id)
+    
+    # Process
+    msg_processing = await update.message.reply_text("⏳ Sedang memproses token, mohon tunggu...")
+    
+    success = save_auth_code(channel_name, code, flow)
+    
+    if success:
+        await msg_processing.edit_text(f"✅ Token otentikasi YouTube untuk channel <b>{channel_name}</b> berhasil disimpan!\n\nBot siap melakukan /upload.", parse_mode="HTML")
+    else:
+        await msg_processing.edit_text("❌ Gagal menukar kode. Pastikan kodenya benar dan belum pernah dipakai, lalu coba /login lagi.")
+        
+    return ConversationHandler.END
+
+
+async def cmd_login_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Cancel the login flow."""
+    user_id = update.effective_user.id
+    _auth_flows.pop(user_id, None)
+    await update.message.reply_text("⛔ Login dibatalkan.")
+    return ConversationHandler.END
 
 
 async def cmd_queue(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -391,7 +457,39 @@ async def cmd_upload(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if err:
         await update.message.reply_text(err, parse_mode="HTML")
         return
-    await update.message.reply_text("🔄 Force upload — mengabaikan jadwal...")
+
+    sheets = get_sheets()
+    pending_videos = sheets.get_pending_videos()
+    today_str = datetime.now(WIB).strftime("%Y-%m-%d")
+    scheduled_today = sheets.get_scheduled_videos(today_str)
+    to_process = scheduled_today + pending_videos
+
+    # Group by channel
+    videos_by_channel = {}
+    for video in to_process:
+        ch = video.get("channel", config.DEFAULT_CHANNEL)
+        videos_by_channel.setdefault(ch, []).append(video)
+
+    total_to_upload = 0
+    msg_breakdown = ""
+    for ch, videos in videos_by_channel.items():
+        summary = sheets.get_queue_summary(channel=ch)
+        remaining = summary["remaining_today"]
+        can_upload = min(remaining, len(videos))
+        total_to_upload += can_upload
+        if can_upload > 0:
+            msg_breakdown += f"• <code>{ch}</code>: {can_upload} video (sisa kuota: {remaining})\n"
+
+    if total_to_upload == 0:
+        await update.message.reply_text("📭 Tidak ada video yang siap di-upload untuk channel manapun (atau limit harian sudah habis).")
+        return
+
+    await update.message.reply_text(
+        f"🔄 <b>Force upload — mengabaikan jadwal</b>\n\n"
+        f"Akan mengupload total <b>{total_to_upload}</b> video:\n"
+        f"{msg_breakdown}",
+        parse_mode="HTML"
+    )
 
     try:
         # Uploading to YouTube is a blocking network operation
@@ -399,16 +497,9 @@ async def cmd_upload(update: Update, context: ContextTypes.DEFAULT_TYPE):
         results = await asyncio.to_thread(get_scheduler().force_upload)
 
         if not results:
-            summary = get_sheets().get_queue_summary()
-            if summary["remaining_today"] <= 0:
-                await update.message.reply_text(
-                    "⚠️ Limit upload harian tercapai (6/hari).\n"
-                    "Video pending sudah dijadwalkan untuk besok."
-                )
-            else:
-                await update.message.reply_text(
-                    "📭 Tidak ada video pending dalam antrian."
-                )
+            await update.message.reply_text(
+                "📭 Tidak ada yang diupload (seluruh channel mencapai limit atau antrian habis/gagal diproses)."
+            )
             return
 
         for r in results:
@@ -1024,6 +1115,18 @@ def main():
     app.add_handler(CommandHandler("ask", cmd_ask))
     app.add_handler(CommandHandler("extract", cmd_extract))
     app.add_handler(CallbackQueryHandler(ask_callback, pattern="^save_idea$"))
+
+    # Login Conversation Handler
+    login_conv_handler = ConversationHandler(
+        entry_points=[CommandHandler("login", cmd_login_start)],
+        states={
+            WAITING_FOR_AUTH_CODE: [
+                MessageHandler(filters.TEXT & ~(filters.COMMAND), handle_auth_code)
+            ],
+        },
+        fallbacks=[CommandHandler("cancel", cmd_login_cancel)],
+    )
+    app.add_handler(login_conv_handler)
 
     # Video / file handler
     app.add_handler(

@@ -72,9 +72,10 @@ def admin_dashboard():
     # Will look for templates/admin.html
     # We will pass all videos from google sheets
     try:
+        from src.core import config
         sheets = get_sheets()
         videos = sheets.get_all_videos()
-        return render_template('admin.html', videos=videos)
+        return render_template('admin.html', videos=videos, channels=config.YOUTUBE_CHANNELS)
     except Exception as e:
         return f"Gagal mengambil antrean video: {e}", 500
 
@@ -119,7 +120,8 @@ def admin_action():
             title = data.get('title', '')
             desc = data.get('description', '')
             tags = data.get('tags', '')
-            sheets.update_metadata(row, title, desc, tags)
+            channel = data.get('channel')
+            sheets.update_metadata(row, title, desc, tags, channel=channel)
             return jsonify({'success': True, 'message': 'Metadata video berhasil diperbarui.'})
             
         else:

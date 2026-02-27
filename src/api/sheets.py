@@ -181,7 +181,7 @@ class SheetsManager:
         return next_dt.strftime("%Y-%m-%d %H:%M WIB")
 
     def update_metadata(
-        self, row: int, title: str, description: str, tags: str
+        self, row: int, title: str, description: str, tags: str, channel: str = None
     ):
         """Update the Groq-generated metadata for a video row."""
         col = config.SHEET_COLUMNS
@@ -189,6 +189,8 @@ class SheetsManager:
         target_sheet.update_cell(row, col["title"], title)
         target_sheet.update_cell(row, col["description"], description)
         target_sheet.update_cell(row, col["tags"], tags)
+        if channel:
+            target_sheet.update_cell(row, col["channel"], channel)
         logger.info(f"Metadata updated for row {row}: '{title}'")
 
     def update_status(self, row: int, status: str):
@@ -317,8 +319,8 @@ class SheetsManager:
                     })
         return scheduled
 
-    def count_uploads_today(self) -> int:
-        """Count how many videos have been uploaded today (WIB)."""
+    def count_uploads_today(self, channel: str = None) -> int:
+        """Count how many videos have been uploaded today (WIB), optionally filtered by channel."""
         today = datetime.now(WIB).strftime("%Y-%m-%d")
         target_sheet = self.sheet
         all_rows = target_sheet.get_all_values()
@@ -326,17 +328,21 @@ class SheetsManager:
 
         for row in all_rows[1:]:
             if len(row) >= 7 and row[6].strip().lower() == "uploaded":
+                if channel:
+                    row_channel = row[9].strip() if len(row) > 9 else config.DEFAULT_CHANNEL
+                    if row_channel.lower() != channel.lower():
+                        continue
                 if row[0].startswith(today):
                     count += 1
 
         return count
 
-    def get_queue_summary(self) -> dict:
-        """Get a summary of the current queue."""
+    def get_queue_summary(self, channel: str = None) -> dict:
+        """Get a summary of the current queue, optionally filtered by channel."""
         target_sheet = self.sheet
         all_rows = target_sheet.get_all_values()
         summary = {
-            "total": len(all_rows) - 1,
+            "total": 0,
             "pending": 0,
             "scheduled": 0,
             "uploaded": 0,
@@ -345,13 +351,22 @@ class SheetsManager:
 
         for row in all_rows[1:]:
             if len(row) >= 7:
+                if channel:
+                    row_channel = row[9].strip() if len(row) > 9 else config.DEFAULT_CHANNEL
+                    if row_channel.lower() != channel.lower():
+                        continue
+                        
+                summary["total"] += 1
                 status = row[6].strip().lower()
                 if status in summary:
                     summary[status] += 1
 
-        summary["uploads_today"] = self.count_uploads_today()
+        summary["uploads_today"] = self.count_uploads_today(channel)
         
-        max_uploads = config.MAX_UPLOADS_PER_DAY_YOUTUBE
+        max_uploads = config.MAX_UPLOADS_PER_DAY_PER_CHANNEL
+        if not channel:
+            # Global limit is sum of all channel limits
+            max_uploads = len(config.YOUTUBE_CHANNELS) * config.MAX_UPLOADS_PER_DAY_PER_CHANNEL
         
         summary["remaining_today"] = max(
             0, max_uploads - summary["uploads_today"]

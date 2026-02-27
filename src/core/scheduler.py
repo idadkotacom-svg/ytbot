@@ -105,18 +105,6 @@ class Scheduler:
         """Process the upload queue for YouTube."""
         today = datetime.now(WIB).strftime("%Y-%m-%d")
 
-        uploads_today = self.sheets.count_uploads_today()
-        remaining = config.MAX_UPLOADS_PER_DAY_YOUTUBE - uploads_today
-
-        logger.info(
-            f"Queue check youtube — Uploads today: {uploads_today}/"
-            f"{config.MAX_UPLOADS_PER_DAY_YOUTUBE}, Remaining: {remaining}"
-        )
-
-        if remaining <= 0:
-            logger.info("Daily upload limit reached for youtube.")
-            return []
-
         # Get videos to process (scheduled for today first, then pending)
         scheduled = self.sheets.get_scheduled_videos(today)
         pending = self.sheets.get_pending_videos()
@@ -128,23 +116,38 @@ class Scheduler:
 
         results = []
         
-        # YouTube always tries to process all remaining slots.
-        limit = remaining
-        
-        for video in to_process[:limit]:
-            result = self._process_single(video)
-            results.append(result)
+        # Group by channel
+        videos_by_channel = {}
+        for video in to_process:
+            ch = video.get("channel", config.DEFAULT_CHANNEL)
+            videos_by_channel.setdefault(ch, []).append(video)
 
-            # Stop entire batch immediately if YouTube quota is exhausted
-            if result.get("quota_exceeded"):
-                logger.warning("YouTube quota exhausted — stopping batch.")
-                break
-            
-            # Decrement remaining regardless of success to prevent infinite failing loops
-            # especially when API quotas are hit.
-            remaining -= 1
+        for channel, videos in videos_by_channel.items():
+            uploads_today = self.sheets.count_uploads_today(channel=channel)
+            remaining = config.MAX_UPLOADS_PER_DAY_PER_CHANNEL - uploads_today
+
+            logger.info(
+                f"Queue check {channel} — Uploads today: {uploads_today}/"
+                f"{config.MAX_UPLOADS_PER_DAY_PER_CHANNEL}, Remaining: {remaining}"
+            )
+
             if remaining <= 0:
-                break
+                logger.info(f"Daily upload limit reached for channel {channel}.")
+                continue
+
+            limit = remaining
+            for video in videos[:limit]:
+                result = self._process_single(video)
+                results.append(result)
+
+                # Stop entire batch for THIS channel if YouTube quota is exhausted
+                if result.get("quota_exceeded"):
+                    logger.warning(f"YouTube quota exhausted for {channel} — stopping batch.")
+                    break
+                
+                remaining -= 1
+                if remaining <= 0:
+                    break
 
         return results
 
@@ -211,13 +214,14 @@ class Scheduler:
             logger.info(f"Uploading to YouTube ({channel_name}): '{clean_title}'...")
             yt_client = self._get_youtube(channel_name)
             
-            video_url = yt_client.upload(
+            upload_response = yt_client.upload(
                 file_path=local_path,
                 title=clean_title,
                 description=full_desc,
                 tags=tags_list,
                 publish_at=publish_at_iso
             )
+            video_url = upload_response["youtube_link"]
 
             # 4. Save to Sheets
             self.sheets.set_youtube_link(row, video_url)
@@ -287,8 +291,6 @@ class Scheduler:
 
     def get_status_message(self) -> str:
         """Generate a human-readable status message for YouTube."""
-        yt_summary = self.sheets.get_queue_summary()
-        
         next_time = self.get_next_upload_time()
         is_upload = self.is_upload_time()
 
@@ -297,13 +299,18 @@ class Scheduler:
 
         msg = (
             "📊 **Upload Queue Status**\n\n"
-            f"📺 <b>YouTube</b>:\n"
-            f"📹 Total: {yt_summary['total']} | ⏳ Pending: {yt_summary['pending']} | 📅 Scheduled: {yt_summary['scheduled']}\n"
-            f"📤 Uploads today: {yt_summary['uploads_today']}/{config.MAX_UPLOADS_PER_DAY_YOUTUBE}\n\n"
             f"🕐 Schedule: `{schedule_str}` WIB\n"
             f"⏰ Now: {now_str}\n"
             f"⏭️ Next upload: {next_time}\n"
-            f"{'🟢 Upload window ACTIVE' if is_upload else '🔴 Waiting for next window'}"
+            f"{'🟢 Upload window ACTIVE' if is_upload else '🔴 Waiting for next window'}\n\n"
         )
+        
+        for ch in config.YOUTUBE_CHANNELS:
+            yt_summary = self.sheets.get_queue_summary(channel=ch)
+            msg += (
+                f"📺 <b>Channel: <code>{ch}</code></b>\n"
+                f"📹 Total: {yt_summary['total']} | ⏳ Pending: {yt_summary['pending']} | 📅 Scheduled: {yt_summary['scheduled']}\n"
+                f"📤 Uploads today: {yt_summary['uploads_today']}/{config.MAX_UPLOADS_PER_DAY_PER_CHANNEL}\n\n"
+            )
 
         return msg

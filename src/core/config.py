@@ -81,7 +81,9 @@ def get_channel_client_secrets_file(channel_name: str) -> str:
     return YOUTUBE_CLIENT_SECRETS_FILE
 
 # === Scheduler ===
-MAX_UPLOADS_PER_DAY_YOUTUBE = int(os.getenv("MAX_UPLOADS_PER_DAY_YOUTUBE", "6"))
+MAX_UPLOADS_PER_DAY_PER_CHANNEL = int(os.getenv("MAX_UPLOADS_PER_DAY_PER_CHANNEL", "6"))
+# Fallback/Deprecated config
+MAX_UPLOADS_PER_DAY_YOUTUBE = int(os.getenv("MAX_UPLOADS_PER_DAY_YOUTUBE", str(MAX_UPLOADS_PER_DAY_PER_CHANNEL)))
 SCHEDULER_INTERVAL_MINUTES = int(os.getenv("SCHEDULER_INTERVAL_MINUTES", "5"))
 
 # === Upload Schedule (Viral Hours WIB) ===
