@@ -198,6 +198,19 @@ class SheetsManager:
         target_sheet.update_cell(row, col["status"], status)
         logger.info(f"Row {row} status → '{status}'")
 
+    def delete_row(self, row: int) -> bool:
+        """
+        Delete a row from the Google Sheet and shift rows up.
+        Note: gspread delete_rows is 1-indexed.
+        """
+        try:
+            logger.info(f"Deleting row {row} from Google Sheet...")
+            self.sheet.delete_rows(row)
+            return True
+        except Exception as e:
+            logger.error(f"Failed to delete row {row}: {e}")
+            return False
+
     def set_youtube_link(self, row: int, youtube_link: str):
         """Set the video link after successful upload (YouTube or Facebook)."""
         col = config.SHEET_COLUMNS
@@ -241,6 +254,38 @@ class SheetsManager:
                 })
 
         return pending
+
+    def get_all_videos(self, reverse: bool = True) -> list[dict]:
+        """
+        Get all videos from the sheet, sorted.
+
+        Returns:
+            List of dicts containing all videos.
+        """
+        target_sheet = self.sheet
+        all_rows = target_sheet.get_all_values()
+        videos = []
+
+        for i, row in enumerate(all_rows[1:], start=2):  # skip header
+            if len(row) >= 7:
+                videos.append({
+                    "row": i,
+                    "timestamp": row[0],
+                    "filename": row[1],
+                    "drive_link": row[2],
+                    "title": row[3],
+                    "description": row[4],
+                    "tags": row[5],
+                    "status": row[6].strip().lower(),
+                    "youtube_link": row[7] if len(row) > 7 else "",
+                    "scheduled_date": row[8] if len(row) > 8 else "",
+                    "channel": row[9] if len(row) > 9 else config.DEFAULT_CHANNEL,
+                })
+        
+        if reverse:
+            videos.reverse()
+            
+        return videos
 
     def get_scheduled_videos(self, date_str: str = None) -> list[dict]:
         """

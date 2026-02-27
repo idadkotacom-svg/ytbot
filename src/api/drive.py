@@ -135,3 +135,23 @@ class DriveUploader:
         fh.close()
         logger.info(f"Downloaded to: {destination}")
         return destination
+
+    def delete(self, file_id: str) -> bool:
+        """
+        Delete a file from Google Drive.
+
+        Args:
+            file_id: Google Drive file ID.
+
+        Returns:
+            True if successful, False otherwise.
+        """
+        try:
+            logger.info(f"Deleting file {file_id} from Google Drive...")
+            service = build("drive", "v3", credentials=self.creds)
+            service.files().delete(fileId=file_id).execute()
+            logger.info(f"Successfully deleted {file_id}")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to delete {file_id}: {e}")
+            return False

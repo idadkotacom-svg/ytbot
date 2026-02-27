@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="id">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>YT Bot - Admin Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f3f4f6;
+        }
+
+        .glass-panel {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+    </style>
+</head>
+
+<body class="text-gray-800">
+
+    <nav class="bg-blue-600 shadow-md">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex items-center justify-between h-16">
+                <div class="flex items-center">
+                    <span class="text-white text-xl font-bold"><i class="fab fa-youtube mr-2"></i> YT Bot Auto-Upload
+                        System</span>
+                </div>
+                <div>
+                    <a href="/logout"
+                        class="text-white hover:bg-blue-700 px-3 py-2 rounded-md font-medium transition"><i
+                            class="fas fa-sign-out-alt mr-1"></i> Logout</a>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+
+        <div class="mb-6 flex justify-between items-end">
+            <div>
+                <h1 class="text-2xl font-bold text-gray-900 mb-1">Queue Management (All Videos)</h1>
+                <p class="text-gray-600 text-sm">Review seluruh video. Tindakan "Reject" akan membatalkan antrean
+                    dan/atau menghapus file dari Google Drive.</p>
+            </div>
+        </div>
+
+        <!-- Error/Success Notification -->
+        <div id="notification"
+            class="hidden mb-4 p-4 rounded-md shadow flex justify-between items-center transition-all">
+            <span id="notif-text"></span>
+            <button onclick="closeNotif()" class="text-sm font-bold opacity-70 hover:opacity-100">&times;</button>
+        </div>
+
+        <!-- Video List -->
+        <div class="grid grid-cols-1 gap-6">
+            {% if videos %}
+            {% for video in videos %}
+            <div class="glass-panel rounded-xl shadow-sm overflow-hidden" id="card-{{ video.row }}">
+                <div class="p-6">
+                    <div class="flex flex-col lg:flex-row gap-6">
+
+                        <!-- Left: Info -->
+                        <div class="flex-1">
+                            <div class="flex items-center gap-2 mb-2">
+                                {% set status = video.status %}
+                                {% if status == 'pending' %}
+                                <span
+                                    class="bg-yellow-100 text-yellow-800 text-xs font-semibold px-2.5 py-0.5 rounded border border-yellow-200"><i
+                                        class="fas fa-clock mr-1"></i> Pending</span>
+                                {% elif status == 'scheduled' %}
+                                <span
+                                    class="bg-blue-100 text-blue-800 text-xs font-semibold px-2.5 py-0.5 rounded border border-blue-200"><i
+                                        class="fas fa-calendar-alt mr-1"></i> Scheduled</span>
+                                {% elif status == 'uploading' %}
+                                <span
+                                    class="bg-purple-100 text-purple-800 text-xs font-semibold px-2.5 py-0.5 rounded border border-purple-200"><i
+                                        class="fas fa-spinner fa-spin mr-1"></i> Uploading</span>
+                                {% elif status == 'uploaded' %}
+                                <span
+                                    class="bg-green-100 text-green-800 text-xs font-semibold px-2.5 py-0.5 rounded border border-green-200"><i
+                                        class="fas fa-check-circle mr-1"></i> Uploaded</span>
+                                {% elif status == 'failed' %}
+                                <span
+                                    class="bg-red-100 text-red-800 text-xs font-semibold px-2.5 py-0.5 rounded border border-red-200"><i
+                                        class="fas fa-exclamation-triangle mr-1"></i> Failed</span>
+                                {% else %}
+                                <span
+                                    class="bg-gray-100 text-gray-800 text-xs font-semibold px-2.5 py-0.5 rounded border border-gray-200"><i
+                                        class="fas fa-question-circle mr-1"></i> {{ status|title }}</span>
+                                {% endif %}
+
+                                <span class="text-xs text-gray-500"><i class="fas fa-hashtag mr-1"></i> Row {{ video.row
+                                    }}</span>
+                            </div>
+
+                            <h3 class="text-lg font-bold text-gray-900 mb-1" id="display-title-{{ video.row }}">{{
+                                video.title or video.filename }}</h3>
+
+                            <!-- Drive Link -->
+                            {% if video.drive_link %}
+                            <a href="{{ video.drive_link }}" target="_blank"
+                                class="inline-flex items-center text-sm text-blue-600 hover:text-blue-800 mb-2 transition font-medium border-r border-gray-300 pr-3 mr-2">
+                                <i class="fab fa-google-drive mr-1"></i> File di Drive
+                            </a>
+                            {% endif %}
+
+                            <!-- Youtube Link if Uploaded / Scheduled -->
+                            {% if video.youtube_link %}
+                            <a href="{{ video.youtube_link }}" target="_blank"
+                                class="inline-flex items-center text-sm text-red-600 hover:text-red-800 mb-2 transition font-medium">
+                                <i class="fab fa-youtube mr-1"></i> Link YouTube
+                            </a>
+                            {% endif %}
+
+                            {% if video.scheduled_date %}
+                            <p class="text-sm text-gray-500 italic mt-1 mb-3"><i
+                                    class="fas fa-calendar-check text-gray-400 mr-1"></i> Jadwal: {{
+                                video.scheduled_date }}</p>
+                            {% endif %}
+
+                            <!-- Hidden Edit Form -->
+                            <div id="edit-form-{{ video.row }}"
+                                class="hidden bg-gray-50 p-4 rounded-lg border border-gray-200 mt-2 mb-4">
+                                <div class="mb-3">
+                                    <label class="block text-xs font-medium text-gray-700 mb-1">Judul Video</label>
+                                    <input type="text" id="input-title-{{ video.row }}" value="{{ video.title }}"
+                                        class="w-full text-sm border-gray-300 rounded-md shadow-sm p-2 bg-white outline-none focus:ring-2 focus:ring-blue-500">
+                                </div>
+                                <div class="mb-3">
+                                    <label class="block text-xs font-medium text-gray-700 mb-1">Deskripsi
+                                        (Opsional)</label>
+                                    <textarea id="input-desc-{{ video.row }}" rows="3"
+                                        class="w-full text-sm border-gray-300 rounded-md shadow-sm p-2 bg-white outline-none focus:ring-2 focus:ring-blue-500">{{ video.description }}</textarea>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="block text-xs font-medium text-gray-700 mb-1">Tags (Pisahkan dengan
+                                        koma)</label>
+                                    <input type="text" id="input-tags-{{ video.row }}" value="{{ video.tags }}"
+                                        class="w-full text-sm border-gray-300 rounded-md shadow-sm p-2 bg-white outline-none focus:ring-2 focus:ring-blue-500">
+                                </div>
+                                <div class="flex gap-2">
+                                    <button onclick="saveEdit({{ video.row }})"
+                                        class="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded text-sm font-medium transition shadow-sm"><i
+                                            class="fas fa-save mr-1"></i> Simpan</button>
+                                    <button onclick="toggleEdit({{ video.row }})"
+                                        class="bg-gray-200 hover:bg-gray-300 text-gray-700 px-3 py-1.5 rounded text-sm font-medium transition"><i
+                                            class="fas fa-times mr-1"></i> Batal</button>
+                                </div>
+                            </div>
+
+                        </div>
+
+                        <!-- Right: Actions -->
+                        <div class="flex lg:flex-col justify-end gap-3 min-w-[160px]">
+                            <button onclick="toggleEdit({{ video.row }})" id="btn-edit-{{ video.row }}"
+                                class="flex-1 lg:flex-none border border-gray-300 bg-white hover:bg-gray-50 text-gray-700 px-4 py-2 rounded-lg font-medium text-sm transition shadow-sm flex items-center justify-center">
+                                <i class="fas fa-edit mr-2 text-blue-500"></i> Edit
+                            </button>
+
+                            <!-- Only show approve button if the status is failed or pending, OR if it's already uploaded we hide it -->
+                            {% if status != 'uploaded' and status != 'uploading' and status != 'scheduled' %}
+                            <button onclick="actionVideo({{ video.row }}, 'approve', '')"
+                                class="flex-1 lg:flex-none bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg font-medium text-sm transition shadow-sm flex items-center justify-center">
+                                <i class="fas fa-check-circle mr-2"></i> Approve
+                            </button>
+                            {% endif %}
+
+                            <button onclick="confirmReject({{ video.row }}, '{{ video.drive_link }}')"
+                                class="flex-1 lg:flex-none bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg font-medium text-sm transition shadow-sm flex items-center justify-center">
+                                <i class="fas fa-trash-alt mr-2"></i> Hapus
+                            </button>
+                        </div>
+
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+            {% else %}
+            <div class="bg-white rounded-xl shadow-sm p-12 text-center border border-gray-200">
+                <div
+                    class="inline-flex items-center justify-center w-16 h-16 rounded-full bg-green-100 text-green-500 mb-4">
+                    <i class="fas fa-check text-2xl"></i>
+                </div>
+                <h3 class="text-xl font-bold text-gray-900 mb-2">Belum ada video sama sekali!</h3>
+                <p class="text-gray-500">Kirim video atau link ke bot Telegram untuk mulai mengotomasi upload.</p>
+            </div>
+            {% endif %}
+        </div>
+
+    </div>
+
+    <script>
+        function toggleEdit(row) {
+            const form = document.getElementById(`edit-form-${row}`);
+            const btn = document.getElementById(`btn-edit-${row}`);
+            if (form.classList.contains('hidden')) {
+                form.classList.remove('hidden');
+                btn.classList.add('bg-blue-50', 'border-blue-300');
+            } else {
+                form.classList.add('hidden');
+                btn.classList.remove('bg-blue-50', 'border-blue-300');
+            }
+        }
+
+        function showNotif(msg, isError = false) {
+            const n = document.getElementById('notification');
+            const nt = document.getElementById('notif-text');
+            nt.innerHTML = `<i class="fas ${isError ? 'fa-exclamation-circle' : 'fa-check-circle'} mr-2"></i> ${msg}`;
+            n.className = `mb-4 p-4 rounded-md shadow flex justify-between items-center transition-all ${isError ? 'bg-red-100 text-red-800 border-l-4 border-red-500' : 'bg-green-100 text-green-800 border-l-4 border-green-500'}`;
+            n.classList.remove('hidden');
+            setTimeout(() => closeNotif(), 5000);
+        }
+
+        function closeNotif() {
+            document.getElementById('notification').classList.add('hidden');
+        }
+
+        async function actionVideo(row, actionType, drive_link, extraData = {}) {
+            const card = document.getElementById(`card-${row}`);
+            card.style.opacity = '0.5';
+            card.style.pointerEvents = 'none';
+
+            const payload = { action: actionType, row: row, drive_link: drive_link, ...extraData };
+
+            try {
+                const res = await fetch('/api/action', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const data = await res.json();
+
+                if (data.success) {
+                    showNotif(data.message);
+                    if (actionType === 'approve' || actionType === 'reject') {
+                        card.style.display = 'none'; // remove from view
+                    } else if (actionType === 'edit') {
+                        card.style.opacity = '1';
+                        card.style.pointerEvents = 'auto';
+                        document.getElementById(`display-title-${row}`).innerText = payload.title;
+                        toggleEdit(row);
+                    }
+                } else {
+                    showNotif(data.message, true);
+                    card.style.opacity = '1';
+                    card.style.pointerEvents = 'auto';
+                }
+            } catch (e) {
+                showNotif('Terjadi kesalahan jaringan: ' + e, true);
+                card.style.opacity = '1';
+                card.style.pointerEvents = 'auto';
+            }
+        }
+
+        function confirmReject(row, driveLink) {
+            if (confirm('Peringatan: Fungsi Hapus akan menghapus file videonya dari antrean dan Google Drive secara permanen. Lanjutkan?')) {
+                actionVideo(row, 'reject', driveLink);
+            }
+        }
+
+        function saveEdit(row) {
+            const t = document.getElementById(`input-title-${row}`).value;
+            const d = document.getElementById(`input-desc-${row}`).value;
+            const tags = document.getElementById(`input-tags-${row}`).value;
+            actionVideo(row, 'edit', '', { title: t, description: d, tags: tags });
+        }
+    </script>
+
+</body>
+
+</html>

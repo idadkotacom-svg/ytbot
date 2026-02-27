@@ -996,30 +996,7 @@ async def save_chat_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     f.write(f"\nTELEGRAM_CHAT_ID={chat_id}\n")
 
 
-# ─── Health Check Server (for Render) ──────────────────────────────
-
-
-def _start_health_server():
-    """Start a simple HTTP server for Render health checks."""
-    import threading
-    from http.server import HTTPServer, BaseHTTPRequestHandler
-
-    port = int(os.environ.get("PORT", "10000"))
-
-    class Handler(BaseHTTPRequestHandler):
-        def do_GET(self):
-            self.send_response(200)
-            self.send_header("Content-Type", "text/plain")
-            self.end_headers()
-            self.wfile.write(b"YT Upload Bot is running!")
-
-        def log_message(self, format, *args):
-            pass  # Suppress HTTP logs
-
-    server = HTTPServer(("0.0.0.0", port), Handler)
-    thread = threading.Thread(target=server.serve_forever, daemon=True)
-    thread.start()
-    logger.info(f"Health check server running on port {port}")
+# Removed obsolete _start_health_server here
 
 
 # ─── Main ──────────────────────────────────────────────────────────
@@ -1031,9 +1008,7 @@ def main():
         logger.error("TELEGRAM_BOT_TOKEN not set! Check your .env file.")
         return
 
-    # Start health check server (for Render)
-    if os.environ.get("RENDER"):
-        _start_health_server()
+    # Note: Keep-alive server is handled at the end of this function via src.bot.server
 
     logger.info("Starting Video Upload Pipeline Bot...")
 
